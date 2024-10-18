@@ -95,7 +95,8 @@ where
   B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
   let (mut sender, conn) =
-    hyper::client::conn::http1::handshake(TokioIo::new(socket)).await?;
+    hyper::client::conn::http1::handshake(TokioIo::new(socket)).await
+    .map_err(|e| {println!("hyper::client::conn::http1::handshake"); e})?;
   let fut = Box::pin(async move {
     if let Err(e) = conn.with_upgrades().await {
       eprintln!("Error polling connection: {}", e);
@@ -103,15 +104,20 @@ where
   });
   executor.execute(fut);
 
-  let mut response = sender.send_request(request).await?;
-  verify(&response)?;
+  let mut response = sender.send_request(request).await
+    .map_err(|e| {println!("sender.send_request"); e})?;
+  verify(&response)
+    .map_err(|e| {println!("verify"); e})?;
 
   match hyper::upgrade::on(&mut response).await {
     Ok(upgraded) => Ok((
       WebSocket::after_handshake(TokioIo::new(upgraded), Role::Client),
       response,
     )),
-    Err(e) => Err(e.into()),
+    Err(e) => {
+      println!("hyper::upgrade::on");
+      Err(e.into())
+    },
   }
 }
 
